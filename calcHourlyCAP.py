@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import sys, time, logging, requests
 import csv
@@ -7,7 +7,7 @@ from datetime import datetime
 def is_leap_year(year):
     """Determine whether a year is a leap year."""
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
-    
+
 # loads the "H0 Standardlastkurve" used by aWattar
 # creates a dictionary for timestamps with the H0 value
 def readH0( year ):
@@ -28,29 +28,38 @@ def readH0( year ):
                 h0_dict[d]=h0
                 #print( d, h0)
     return h0_dict
-    
-#gets an Array of datetime and prices 
-def getHourlyPrices48h():
+
+#gets an Array of datetime and prices
+def getHourlyPrices48h(region, vat = 1):
     aPrices=[]
-    
+
     logging.info("Query aWATTar for new pricing...")
     timestamp = int(time.time()/86400)*86400-3600
     # get market price from today (whole day) and future
-    r = requests.get('https://api.awattar.de/v1/marketdata?start='+str(timestamp*1000)+
+    r = requests.get('https://api.awattar.' + str(region) + '/v1/marketdata?start=' + str(timestamp*1000)+
         "&end="+str((timestamp+3*86400)*1000))
     j = r.json()["data"]
     for i in j:
         dt = datetime.fromtimestamp(i["start_timestamp"]/1000)
-        p = round(i["marketprice"]/10*1.19,2)   # convert from Eur/MWh to Cent/kWh plus 19% VAT
+        p = round(i["marketprice"] / 10 * vat ,2)   # convert from Eur/MWh to Cent/kWh plus x% VAT
         logging.info( dt.strftime("%Y-%m-%d %H = ")+str(p) )
         #print( dt.strftime("%Y-%m-%d %H = ")+str(p) )
         aPrices.append([ dt,p ])
     return aPrices
 
-def getHourlyPricesH0():
+def getHourlyPricesH0(region='de'):
+    region = region.lower()
+    if region == 'at':
+        vat = 1.2
+    elif region == 'de':
+        vat = 1.19
+    else:
+        raise ValueError('Region must be at or de')
+
+    print("Berechnung der HOURLY-CAP Preise von aWattar." + region)
     sumPricesH0=0
     sumH0=0
-    aPrices=getHourlyPrices48h()
+    aPrices=getHourlyPrices48h(region, vat)
     priceH0_dict={}
     h0_dict=readH0( aPrices[0][0].year )
     i=0
@@ -80,11 +89,9 @@ def getHourlyPricesH0():
                 priceDiff=0
             print( price[0].strftime("%Y-%m-%d %H = ")+str(price[1])+", "+"{:.2f}".format(priceH0_dict[price[0].day])+", "+"{:.2f}".format(priceDiff) )
             #print( price[0], price[1], priceH0_dict[price[0].day], priceDiff )
-            aNewPrices.append( [price[0], priceDiff] )
+            aNewPrices.append( [price[0], price[1], priceDiff] )
     return aNewPrices
 
 
-#
-#
-print("Berechnung der HOURLY-CAP Preise von aWattar.de")
-getHourlyPricesH0()
+if __name__ == '__main__':
+    getHourlyPricesH0('de')
